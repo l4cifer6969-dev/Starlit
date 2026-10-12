@@ -113,7 +113,7 @@ TitanBot is fully containerized for easy deployment.
    cp .env.example .env
    ```
    Set at minimum `DISCORD_TOKEN`, `CLIENT_ID`, and `GUILD_ID`. Docker Compose also reads `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` from `.env` (defaults: `titanbot` / `password` / `titanbot`).
-   All registered commands can be used as slash commands or with the configured text prefix. Set `PREFIX` in `.env` (default: `!`) and enable **Message Content Intent** for the bot in the Discord Developer Portal. For example, `/play query:lofi` can be run as `!play lofi`; quote multi-word values, such as `!play "lofi hip hop"`. Restart the bot after changing the prefix.
+   All registered commands can be used as slash commands or with the configured text prefix. Set `PREFIX` in `.env` (default: `!`) and enable **Message Content Intent** for the bot in the Discord Developer Portal. For example, `/play query:lofi` can be run as `!play lofi`; quote multi-word values, such as `!play "lofi hip hop"`. Rebuild and restart the bot after changing its source code; a plain container restart keeps running the old image.
 
 3. **Build and start the containers:**
    ```bash

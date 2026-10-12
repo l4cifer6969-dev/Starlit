@@ -78,6 +78,7 @@ export async function loadCommands(client) {
             
             command.category = category;
             command.filePath = normalizedPath;
+            command.prefixExecute = command.prefixExecute || command.execute;
             
             const primaryCommandName = command.data.name;
             
@@ -116,7 +117,9 @@ export async function loadCommands(client) {
         }
     }
     
-    logger.info(`Loaded ${uniqueCommands.size} commands`);
+    const prefixEnabledCommands = Array.from(client.commands.values())
+        .filter((command) => typeof command.prefixExecute === 'function').length;
+    logger.info(`Loaded ${uniqueCommands.size} commands (${prefixEnabledCommands} prefix-enabled)`);
     return client.commands;
 }
 
