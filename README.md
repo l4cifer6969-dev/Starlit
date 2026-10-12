@@ -113,7 +113,7 @@ TitanBot is fully containerized for easy deployment.
    cp .env.example .env
    ```
    Set at minimum `DISCORD_TOKEN`, `CLIENT_ID`, and `GUILD_ID`. Docker Compose also reads `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` from `.env` (defaults: `titanbot` / `password` / `titanbot`).
-   Slash and prefix commands work together. Set `PREFIX` in `.env` (default: `!`) for text commands, and enable **Message Content Intent** for the bot in the Discord Developer Portal. Restart the bot after changing the prefix.
+   All registered commands can be used as slash commands or with the configured text prefix. Set `PREFIX` in `.env` (default: `!`) and enable **Message Content Intent** for the bot in the Discord Developer Portal. For example, `/play query:lofi` can be run as `!play lofi`; quote multi-word values, such as `!play "lofi hip hop"`. Restart the bot after changing the prefix.
 
 3. **Build and start the containers:**
    ```bash
@@ -142,7 +142,7 @@ Music uses [Lavalink v4](https://github.com/lavalink-devs/Lavalink) via [Riffy](
    ```
    Remove or rename `lavalink/nodes.json` so the bot falls back to those env vars.
 3. Override nodes inline with `LAVALINK_NODES` (JSON array) or point at another file with `LAVALINK_NODES_FILE`.
-4. Use `/play <song>` from a voice channel, or `/join` to connect without playing. Prefix shortcuts: `join`, `np`, `leave`, `pause`, `resume`, `skip`, `stop`, `volume <0-100>`, or `music <subcommand>`. Use `/nowplaying` and `/queue` for status; `/music` for loop, shuffle, seek, and other controls.
+4. Use `/play <song>` or `!play <song>` from a voice channel, or `/join` or `!join` to connect without playing. Prefix shortcuts: `join`, `np`, `leave`, `pause`, `resume`, `skip`, `stop`, `volume <0-100>`, or `music <subcommand>`. Use `/nowplaying` or `!nowplaying` and `/queue` or `!queue` for status; `/music` or `!music` for loop, shuffle, seek, and other controls.
 
 ### Using GitHub Container Registry
 

@@ -171,14 +171,6 @@ export function createMockInteraction(message, commandData, args) {
   return mockInteraction;
 }
 
-export function supportsPrefixExecution(command) {
-  if (command.prefixExecute) {
-    return true;
-  }
-
-  return !!command.execute;
-}
-
 export async function executePrefixCommand(command, message, args, client, prefixOverride = null, guildConfig = null) {
   const mockInteraction = createMockInteraction(message, command.data, args);
   const coordinator = mockInteraction._responseCoordinator;
