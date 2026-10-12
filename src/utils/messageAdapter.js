@@ -5,7 +5,6 @@ import { createEmbed } from './embeds.js';
 import { handleInteractionError } from './errorHandler.js';
 import { logger } from './logger.js';
 import { InteractionHelper } from './interactionHelper.js';
-import { SLASH_ONLY_COMMANDS } from '../config/commands/prefixRestrictions.js';
 import { getCommandPrefix } from '../config/bot.js';
 import { ResponseCoordinator, buildPrefixUsage } from './responseCoordinator.js';
 import { enforceDefaultCommandPermissions } from './permissionGuard.js';
@@ -59,6 +58,7 @@ export function createMockInteraction(message, commandData, args) {
   const mockInteraction = {
     user: message.author,
     member: message.member,
+    inGuild: () => Boolean(message.guild),
     get memberPermissions() {
       return message.member?.permissions ?? null;
     },
@@ -172,15 +172,6 @@ export function createMockInteraction(message, commandData, args) {
 }
 
 export function supportsPrefixExecution(command) {
-  if (command.prefixOnly === false || command.slashOnly === true) {
-    return false;
-  }
-
-  const commandName = command.data?.name?.toLowerCase();
-  if (commandName && SLASH_ONLY_COMMANDS.has(commandName)) {
-    return false;
-  }
-
   if (command.prefixExecute) {
     return true;
   }

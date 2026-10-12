@@ -1,4 +1,4 @@
-import { getColor, getDefaultApplicationQuestions } from '../../config/bot.js';
+import { getColor, getDefaultApplicationQuestions, getCommandPrefix } from '../../config/bot.js';
 import { SlashCommandBuilder, ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
 import { createEmbed, successEmbed } from '../../utils/embeds.js';
 import { logger } from '../../utils/logger.js';
@@ -35,7 +35,6 @@ function getApplicationStatusPresentation(statusValue) {
 }
 
 export default {
-    slashOnly: true,
     data: new SlashCommandBuilder()
         .setName("apply")
         .setDescription("Manage role applications")
@@ -150,61 +149,16 @@ export async function handleApplicationModal(interaction) {
             answer: answer
         });
     }
-    
+
     try {
-        const application = await ApplicationService.submitApplication(interaction.client, {
-            guildId: interaction.guild.id,
-            userId: interaction.user.id,
-            roleId: roleId,
-            roleName: applicationRole.name,
-            username: interaction.user.tag,
-            avatar: interaction.user.displayAvatarURL(),
-            answers: answers
-        });
-        
+        const application = await submitApplicationAnswers(interaction, applicationRole, answers);
         const embed = successEmbed(
             'Application Submitted',
             `Your application for **${applicationRole.name}** has been submitted successfully!\n\n` +
             `Application ID: \`${application.id}\`\n` +
             `You can check the status with \`/apply status id:${application.id}\``
         );
-        
         await InteractionHelper.safeEditReply(interaction, { embeds: [embed], flags: ["Ephemeral"] });
-        
-        const settings = await getApplicationSettings(interaction.client, interaction.guild.id);
-        const roleSettings = await getApplicationRoleSettings(interaction.client, interaction.guild.id, roleId);
-        const guildConfig = await getGuildConfig(interaction.client, interaction.guild.id);
-
-        const logChannelId = resolveApplicationLogChannel(guildConfig, roleSettings, settings);
-
-        if (logChannelId) {
-            const logMessage = await logEvent({
-                client: interaction.client,
-                guildId: interaction.guild.id,
-                eventType: EVENT_TYPES.APPLICATION_SUBMIT,
-                channelId: logChannelId,
-                data: {
-                    title: 'Application Submitted',
-                    lines: [
-                        formatLogLine('Applicant', `<@${interaction.user.id}> (${interaction.user.tag})`),
-                        formatLogLine('Application', applicationRole.name),
-                        formatLogLine('Role', role.name),
-                        formatLogLine('Application ID', `\`${application.id}\``),
-                    ],
-                    inlineFields: [
-                        { name: 'Status', value: '🟡 In Progress', inline: true },
-                    ],
-                    author: await resolveUserAuthor(interaction.client, interaction.user.id),
-                },
-            });
-
-            if (logMessage) {
-                await updateApplication(interaction.client, interaction.guild.id, application.id, {
-                    logMessageId: logMessage.id,
-                    logChannelId,
-                });
-            }
-        }
         
     } catch (error) {
         logger.error('Error creating application:', {
@@ -240,13 +194,14 @@ async function handleList(interaction) {
             embed.addFields({
                 name: `${index + 1}. ${appRole.name}`,
                 value: `**Role:** ${role ?`<@&${appRole.roleId}>`: 'Role not found'}\n` +
-                       `**Apply with:** \`/apply submit application:"${appRole.name}"\``,
+                       `**Apply with:** \`/apply submit application:"${appRole.name}"\` or ` +
+                       `\`${getCommandPrefix()}apply submit "${appRole.name}"\``,
                 inline: false
             });
         });
 
         embed.setFooter({
-            text: "Use /apply submit application:<name> to apply for any of these roles."
+            text: `Use /apply submit or ${getCommandPrefix()}apply submit to apply for any of these roles.`,
         });
 
         return InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
@@ -306,6 +261,10 @@ async function handleSubmit(interaction, settings) {
         questions = roleSettings.questions;
     }
 
+    if (interaction._isPrefixCommand) {
+        return handlePrefixApplicationSubmit(interaction, applicationRole, questions);
+    }
+
     questions.forEach((question, index) => {
         const input = new TextInputBuilder()
             .setCustomId(`q${index}`)
@@ -323,6 +282,115 @@ async function handleSubmit(interaction, settings) {
     });
 
     await interaction.showModal(modal);
+}
+
+async function handlePrefixApplicationSubmit(interaction, applicationRole, questions) {
+    const dmChannel = await interaction.user.createDM();
+    await dmChannel.send(
+        `Let's complete your application for **${applicationRole.name}**. ` +
+        'Reply to each question below within 2 minutes. Type `cancel` to stop.',
+    );
+
+    const answers = [];
+    for (const [index, question] of questions.entries()) {
+        await dmChannel.send(`**${index + 1}/${questions.length}:** ${question}`);
+
+        let responses;
+        try {
+            responses = await dmChannel.awaitMessages({
+                filter: (message) =>
+                    message.author.id === interaction.user.id &&
+                    !message.author.bot,
+                max: 1,
+                time: 120_000,
+                errors: ['time'],
+            });
+        } catch (error) {
+            if (error !== 'time' && error?.message !== 'time') {
+                throw error;
+            }
+
+            await dmChannel.send('Application cancelled because no answer was received in time.');
+            return;
+        }
+
+        const answer = responses.first().content.trim();
+        if (answer.toLowerCase() === 'cancel') {
+            await dmChannel.send('Application cancelled.');
+            return;
+        }
+
+        answers.push({ question, answer });
+    }
+
+    const application = await submitApplicationAnswers(interaction, applicationRole, answers);
+    await dmChannel.send(
+        `Your application for **${applicationRole.name}** has been submitted. ` +
+        `Application ID: \`${application.id}\`. Check its status with \`${getCommandPrefix()}apply status ${application.id}\`.`,
+    );
+    await InteractionHelper.safeReply(interaction, {
+        embeds: [successEmbed('Application Submitted', 'I sent you a DM confirming your application.')],
+    });
+}
+
+async function submitApplicationAnswers(interaction, applicationRole, answers) {
+    const roleId = applicationRole.roleId;
+    const role = interaction.guild.roles.cache.get(roleId);
+    if (!role) {
+        throw createError(
+            'Application role not found',
+            ErrorTypes.USER_INPUT,
+            'The role for this application no longer exists.',
+            { guildId: interaction.guild.id, roleId },
+        );
+    }
+
+    const application = await ApplicationService.submitApplication(interaction.client, {
+        guildId: interaction.guild.id,
+        userId: interaction.user.id,
+        roleId,
+        roleName: applicationRole.name,
+        username: interaction.user.tag,
+        avatar: interaction.user.displayAvatarURL(),
+        answers,
+    });
+
+    const settings = await getApplicationSettings(interaction.client, interaction.guild.id);
+    const roleSettings = await getApplicationRoleSettings(interaction.client, interaction.guild.id, roleId);
+    const guildConfig = await getGuildConfig(interaction.client, interaction.guild.id);
+
+    const logChannelId = resolveApplicationLogChannel(guildConfig, roleSettings, settings);
+
+    if (logChannelId) {
+        const logMessage = await logEvent({
+            client: interaction.client,
+            guildId: interaction.guild.id,
+            eventType: EVENT_TYPES.APPLICATION_SUBMIT,
+            channelId: logChannelId,
+            data: {
+                title: 'Application Submitted',
+                lines: [
+                    formatLogLine('Applicant', `<@${interaction.user.id}> (${interaction.user.tag})`),
+                    formatLogLine('Application', applicationRole.name),
+                    formatLogLine('Role', role.name),
+                    formatLogLine('Application ID', `\`${application.id}\``),
+                ],
+                inlineFields: [
+                    { name: 'Status', value: '🟡 In Progress', inline: true },
+                ],
+                author: await resolveUserAuthor(interaction.client, interaction.user.id),
+            },
+        });
+
+        if (logMessage) {
+            await updateApplication(interaction.client, interaction.guild.id, application.id, {
+                logMessageId: logMessage.id,
+                logChannelId,
+            });
+        }
+    }
+
+    return application;
 }
 
 async function handleStatus(interaction) {
